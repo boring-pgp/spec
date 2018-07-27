@@ -1,105 +1,133 @@
+# Strong-OpenPGP Message Format
 
+## Abstract
 
-   Strong-OpenPGP Message Format
+This is a strong subset of OpenPGP.
 
-Abstract
+OpenPGP keys and messages are sequences of packets.
 
-   This is a strong subset of OpenPGP.
+### How to use this profile
 
-   OpenPGP keys and messages are sequences of packets.
+??? `GnuPG: --compress-level 0 --disable-signer-uid`
 
-0. How to use this profile
+## 1. Data Formats
 
-GnuPG: --compress-level 0 --disable-signer-uid
+A _scalar_ number is an unsigned big-endian.  Example: `0x01 0x00` = 256.
 
-1. Data Formats
+A _multiprecision integer_ (MPI) is a two-byte scalar with the
+length in bits, followed by a scalar with the actual integer.
+Unused bits of an MPI MUST be zero.  Example: `0x00 0x09 0x01 0x00` = 256.
 
-   A "scalar" number is an unsigned big-endian.
+A _text_ is an UTF-8 string.
 
-   A "multiprecision integer" (MPI) is a two-byte scalar with the
-   length (in bits), followed by a scalar with the actual integer.
-   Unused bits of an MPI MUST be zero.
+A _time_ is a four-byte scalar with the number of seconds since
+midnight, 1 January 1970 UTC.
 
-   A "text" is an UTF-8 string.
+## 2. Packet Syntax
 
-   A "time" is a four-byte scalar with the number of seconds since
-   midnight, 1 January 1970 UTC.
+A _packet_ consists of a packet tag, followed by one or more packet
+data blocks containing length information and the packet body.
 
+### 2.1. Packet Tag
 
-2. Packet Syntax
+A _packet tag_ is a byte:
 
-   A "packet" consists of a packet tag, followed by one or more packet
-   data blocks containing length information and the packet body.
+    packet tag = 0xc0 || tag
 
-2.1. Packet Tag
+The defined tags are:
 
-   A "packet tag" is a byte:
-   
-        packet tag = 0xc0 || tag
+|       Tag | Packet Type                                         |
+| --------- | ----------------------------------------------------|
+|      0x0b | Literal Data                                        |
+|      0x01 | Public-Key Encrypted Session Key                    |
+|      0x14 | AEAD Encrypted Data                                 |
+|      0x04 | One-Pass Signature                                  |
+|      0x02 | Signature                                           |
+|      0x06 | Public-Key                                          |
+|      0x0e | Public-Subkey                                       |
+|      0x0d | User ID                                             |
 
-   The defined tags are:
+### 2.2. Packet Data Blocks
 
-    +-----------+-----------------------------------------------------+
-    |       Tag | Packet Type                                         |
-    +-----------+-----------------------------------------------------+
-    |      0x0b | Literal Data Packet                                 |
-    |      0x01 | Public-Key Encrypted Session Key Packet             |
-    |      0x14 | AEAD Encrypted Data Packet                          |
-    |      0x04 | One-Pass Signature Packet                           |
-    |      0x02 | Signature Packet                                    |
-    |      0x06 | Public-Key Packet                                   |
-    |      0x0e | Public-Subkey Packet                                |
-    |      0x0d | User ID Packet                                      |
-    +-----------+-----------------------------------------------------+
+The _packet data_ depends on the packet type.
 
-2.2. Packet Data Blocks
+#### 2.2.1. Regular Packets
 
-   The "packet data" consists of zero or more partial length data
-   blocks, finished by exactly one fixed length data block.
+All packets except "Literal Data" and "AEAD Encrypted Data" use exactly
+one fixed length data block.
 
-   A "partial length data block" consists of the byte 0xf0, followed by
-   exactly 2^16 = 65536 bytes of packet body data.
+A _fixed length data block_ consists of:
 
-   A "fixed length data block" consists of the byte 0xff, followed by
-   a four-byte scalar with the length of the remaining packet data,
-   followed by that packet body data.
+* `0xff`,
+* a four-byte scalar with the length of the following body data,
+* followed by the packet body data.
 
-   Only data packets (0x0b = Literal or 0x14 = AEAD Encrypted Data)
-   MAY have partial length data blocks.  All other packet types MUST
-   NOT have partial length data blocks.
+#### 2.2.2. Literal Data Packets
 
+Literal data packets have a body that consists of:
 
-3. Packet Composition
+* zero or more partial length data blocks,
+* finished by exactly one fixed length data block.
 
-   These are the rules for how packets should be put into sequences.
+A _partial length data block_ consists of the byte `0xf0`, followed by
+exactly 2^16 = 65536 bytes of packet body data.
 
-3.1. Encrypted and/or Signed Message
+#### 2.2.3. AEAD Encrypted Data Packets
 
-   A message is a sequence of packets according to this grammar (see RFC5234):
+AEAD-encrypted data packets have a body that consists of:
 
-   message = encrypted-message / signed-message
+* an AEAD header block,
+* an AEAD initialization block,
+* zero or more repetitions of:
+  * a partial length data block
+  * an AEAD tag block
+* finished by exactly one fixed length data block that includes a final AEAD tag at the end (without the block header).
 
-   encrypted-message = 1*64"Public-Key Encrypted Session Key Packet" "AEAD Encrypted Data Packet"
+An _AEAD header block_ consists of the byte `0xe2`, followed by the
+4 byte AEAD header:
+* `0x01` (version)
+* `0x09` (AES-256)
+* `0x01` (EAX)
+* `0x0a` (64 KB chunk size)
 
-   signed-message = "One-Pass Signature Packet" (signed-message / "Literal Data Packet") "Signature Packet"
+An _AEAD initialization block_ consists followed by the byte `0xe4`,
+followed by the 16 byte EAX initialization vector.
 
-   In addition, decrypting an AEAD Encrypted Data packet must yield a
-   signed-message or a Literal Data packet.
+An _AEAD tag block_ consists of the byte `0xe4`, followed by the EAX
+authentication tag for the previous data block.
 
-   If a message contains more than one signature, the signature
-   packets bracket the message; that is, the first Signature packet
-   after the message corresponds to the last One-Pass Signature packet
-   and the final Signature packet corresponds to the first One-Pass
-   signature packet.
+## 3. Packet Composition
 
-   The maximum number of signatures is 64. If you need more, use
-   detached signatures instead which do not require nesting.
+These are the rules for how packets should be put into sequences.
 
-3.2. Detached Signatures
+### 3.1. Encrypted and/or Signed Message
 
-   Detached signatures consist of exactly one Signature Packet.
+A message is a sequence of packets according to this grammar (see
+RFC5234):
 
-3.3. Transfering Public Key
+    message = encrypted-message / signed-message
+
+    encrypted-message = 1*64"Public-Key Encrypted Session Key Packet" "AEAD Encrypted Data Packet"
+
+    signed-message = "One-Pass Signature Packet" (signed-message / "Literal Data Packet") "Signature Packet"
+
+In addition, decrypting an AEAD Encrypted Data packet must yield a
+signed-message or a Literal Data packet.
+
+If a message contains more than one signature, the signature
+packets bracket the message; that is, the first Signature packet
+after the message corresponds to the last One-Pass Signature packet
+and the final Signature packet corresponds to the first One-Pass
+signature packet.
+
+The maximum number of signatures is 64. If you need more, use
+detached signatures instead which do not require nesting.
+
+### 3.2. Detached Signatures
+
+Detached signatures consist of exactly one Signature Packet.
+
+### 3.3. Transfering Public Key
 
    Primary-Key
       [Revocation Self Signature]
@@ -199,7 +227,7 @@ GnuPG: --compress-level 0 --disable-signer-uid
 
    A One-Pass Signature packet comes before the signed data and allows
    the signer to output the signed message in one pass.
-   
+
    Format:
 
    * 0x03 (version)
@@ -254,7 +282,7 @@ GnuPG: --compress-level 0 --disable-signer-uid
    The body of this packet consists of:
 
    o  The byte 0x03.
- 
+
    o  The eight-byte key ID of the public (sub-)key to
       which the session key is encrypted.
 
@@ -702,7 +730,7 @@ GnuPG: --compress-level 0 --disable-signer-uid
 5.2.3.13. (Removed intentionally)  {5.2.3.12} Revocable
 
    FIXME: Make sur this is present on non-revocation signatures.
-   
+
    (1 byte of revocability, 0 for not, 1 for revocable)
 
    Signature's revocability status.  The packet body contains a Boolean
@@ -1826,4 +1854,3 @@ Key signature subpackets:
    0x02 0x16 0x00 (no compression)
 
    0x02 0x09 0x01 (for primary user id)
-
