@@ -8,7 +8,7 @@ OpenPGP keys and messages are sequences of packets.
 
 ### How to use this profile
 
-??? `GnuPG: --compress-level 0 --disable-signer-uid`
+FIXME: List all programs here.
 
 ## 1. Data Formats
 
@@ -98,7 +98,7 @@ authentication tag for the previous data block.
 
 ## 3. Packet Composition
 
-These are the rules for how packets should be put into sequences.
+These are the rules for how packets should be put into sequences.  There are three types of valid sequences: Encrypted and/or signed messages, detached signatures, and transferable public keys.
 
 ### 3.1. Encrypted and/or Signed Message
 
@@ -129,115 +129,50 @@ Detached signatures consist of exactly one Signature Packet.
 
 ### 3.3. Transfering Public Key
 
-   Primary-Key
-      [Revocation Self Signature]
-      [Direct Key Signature...]
-      [User ID [Signature ...] ...]
-      [[Subkey [Binding-Signature-Revocation]
-              Primary-Key-Binding-Signature] ...]
+* Public-Key (Signing key)
+* User ID (empty)
+* Signature (binding)
+* Public-Subkey (Encryption key)
+* Signature (binding)
 
-   A subkey always has a single signature after it that is issued using
-   the primary key to tie the two keys together.  Subkeys that can
-   issue signatures MUST have a V4 binding signature due to the REQUIRED
-   embedded primary key binding signature.
+## 4. Packet Types
 
-   In the above diagram, if the binding signature of a subkey has been
-   revoked, the revoked key may be removed, leaving only one key.
+This ection contains a detailed description for each possible packet
+type.  Signature packets can occur in three different contexts, thus the signature section below contains three descriptions.  All other packet types can only occur in one specific place.
 
-   In a V4 key, the primary key SHOULD be a key capable of
-   certification.  There are cases, such as device certificates, where
-   the primary key may not be capable of certification.  A primary key
-   capable of making signatures SHOULD be accompanied by either a
-   certification signature (on a User ID) or a signature directly on
-   the key.
+### 4.1. Literal Data Packet
 
-   Implementations SHOULD accept encryption-only primary keys without a
-   signature.  It also SHOULD allow importing any key accompanied either
-   by a certification signature or a signature on itself.  It MAY accept
-   signature-capable primary keys without an accompanying signature.
+The body of a Literal Data packet contains a header and the actual
+plaintext of an encrypted and/or signed message.
 
-   It is also possible to have a signature-only subkey.  This permits a
-   primary key that collects certifications (key signatures), but is
-   used only for certifying subkeys that are used for encryption and
-   signatures.
+Format:
 
-   o  One Public-Key packet
+* `0x62` (binary)
+* `0x00` (empty filename)
+* `0x00 0x00 0x00 0x00` (no creation time)
+* the actual plaintext message
 
-   o  Zero or more revocation signatures
+Note that all this data together needs to be split up in zero or more
+partial packet length data blocks followed by a final fixed length data
+block, as described above.
 
-   o  Zero or more User ID packets
+### 4.2. One-Pass Signature Packets
 
-   o  After each User ID packet, zero or more Signature packets
-      (certifications)
+A One-Pass Signature packet comes before the signed data and allows
+the signer to output the signed message in one pass.
 
-   o  Zero or more Subkey packets
-
-   o  After each Subkey packet, one Signature packet, plus optionally a
-      revocation
-
-   The Public-Key packet occurs first.  Each of the following User ID
-   packets provides the identity of the owner of this public key.  If
-   there are multiple User ID packets, this corresponds to multiple
-   means of identifying the same unique individual user; for example, a
-   user may have more than one email address, and construct a User ID
-   for each one.
-
-   Immediately following each User ID packet, there are zero or more
-   Signature packets.  Each Signature packet is calculated on the
-   immediately preceding User ID packet and the initial Public-Key
-   packet.  The signature serves to certify the corresponding public key
-   and User ID.  In effect, the signer is testifying to his or her
-   belief that this public key belongs to the user identified by this
-   User ID.
-
-   After the User ID packets, there may be zero or more Subkey
-   packets.  In general, subkeys are provided in cases where the
-   top-level public key is a signature-only key.  However, any V4 key
-   may have subkeys, and the subkeys may be encryption-only keys,
-   signature-only keys, or general-purpose keys.
-
-   Each Subkey packet MUST be followed by one Signature packet, which
-   should be a subkey binding signature issued by the top-level key.
-   For subkeys that can issue signatures, the subkey binding signature
-   MUST contain an Embedded Signature subpacket with a primary key
-   binding signature (0x19) issued by the subkey on the top-level key.
-
-   Subkey and Key packets may each be followed by a revocation Signature
-   packet to indicate that the key is revoked.  Revocation signatures
-   are only accepted if they are issued by the key itself, or by a key
-   that is authorized to issue revocations via a Revocation Key
-   subpacket in a self-signature by the top-level key.
-
-
-4. Packet Types
-
-4.1. Literal Data Packet (Tag 11)
-
-   A Literal Data packet contains the actual plaintext of an encrypted
-   and/or signed message.
-
-   Format:
-
-   * 0x62 (binary)
-   * 0x00 (empty filename)
-   * 0x00 0x00 0x00 0x00 (no creation time)
-   * the actual plaintext message
-
-4.2. One-Pass Signature Packets (Tag 4)
-
-   A One-Pass Signature packet comes before the signed data and allows
-   the signer to output the signed message in one pass.
-
-   Format:
+Format:
 
    * 0x03 (version)
    * 0x00 (binary document)
    * 0x08 (SHA2-256)
-   * 0x01 (RSA) or 0x16 (EdDSA)
+   * 0x16 (EdDSA)
    * Key ID of signing key (8 bytes)
    * 0x00 (not nested)
 
-4.3. Signature Packets for File Signatures (Tag 2)
+### 4.3. Signature Packets
+
+#### 4.3.1. File Signatures
 
    Format:
 
@@ -245,7 +180,7 @@ Detached signatures consist of exactly one Signature Packet.
 
    * 0x04 (version)
    * 0x00 (binary document)
-   * 0x01 (RSA) or 0x16 (EdDSA)
+   * 0x16 (EdDSA)
    * 0x08 (SHA2-256)
    * 0x00 0x28 (length of hashed subpacket data)
    * 0x21 0x21 followed by 32-byte fingerprint (issuer fingerprint version 5)
@@ -255,10 +190,6 @@ Detached signatures consist of exactly one Signature Packet.
 
    * 0x00 0x00 (length of unhashed subpacket data)
    * 0x00 0x00 (quick check bytes, could also be random)
-
-   For RSA:
-
-   * MPI of RSA signature value m**d mod n
 
    For EdDSA:
 
@@ -272,7 +203,7 @@ Detached signatures consist of exactly one Signature Packet.
    from the version number through the hashed subpacket data (inclusive)
    is hashed.  The resulting hash value is what is signed.
 
-4.4. Public-Key Encrypted Session Key Packets (Tag 1)
+### 4.4. Public-Key Encrypted Session Key Packets
 
    A Public-Key Encrypted Session Key packet holds the session key
    used to encrypt a message. The AEAD Encrypted Data Packet is
@@ -281,20 +212,16 @@ Detached signatures consist of exactly one Signature Packet.
 
    The body of this packet consists of:
 
-   o  The byte 0x03.
+* The byte 0x03.
 
-   o  The eight-byte key ID of the public (sub-)key to
-      which the session key is encrypted.
+* The eight-byte key ID of the public (sub-)key to which the session
+  key is encrypted.
 
-   o  A one-byte number giving the public-key algorithm used.
+* A one-byte number giving the public-key algorithm used.
 
-   o  A string of bytes that is the encrypted session key.  This string
+* A string of bytes that is the encrypted session key.  This string
       takes up the remainder of the packet, and its contents are
       dependent on the public-key algorithm used.
-
-      Algorithm Specific Fields for RSA encryption:
-
-      *  Multiprecision integer (MPI) of RSA encrypted value m**e mod n.
 
       Algorithm-Specific Fields for ECDH encryption:
 
@@ -321,7 +248,7 @@ Detached signatures consist of exactly one Signature Packet.
    implementation may try all available private keys, checking for a
    valid decrypted session key.
 
-5.16.  AEAD Encrypted Data Packet (Tag 20)
+### 4.5.  AEAD Encrypted Data Packet (Tag 20)
 
    This packet contains data encrypted with an authenticated encryption
    and additional data (AEAD) construction.  When it has been decrypted,
@@ -330,9 +257,7 @@ Detached signatures consist of exactly one Signature Packet.
 
    The body of this packet consists of:
 
-   o  The bytes 0x01 0x09 0x01
-
-   o  A one-byte chunk size
+   o  The bytes 0x01 0x09 0x01 0x0a
 
    o  A starting initialization vector (16 bytes)
 
@@ -365,15 +290,6 @@ Detached signatures consist of exactly one Signature Packet.
    is given the additional data specified above, plus an eight-byte,
    big-endian value specifying the total number of plaintext bytes
    encrypted.  This allows detection of a truncated ciphertext.
-
-   The chunk size byte specifies the size of chunks using the following
-   formula (in C), where c is the chunk size byte:
-
-       chunk_size = ((uint64_t)1 << (c + 6))
-
-   An implementation MUST support chunk size bytes with values from 0
-   to 56.  Chunk size bytes with other values are reserved for future
-   extensions.
 
    A new random initialization vector MUST be used for each message.
 
@@ -449,10 +365,6 @@ Detached signatures consist of exactly one Signature Packet.
       algorithm.  The high 16 bits (first two bytes) of the hash are
       included in the Signature packet to provide a quick test to reject
       some invalid signatures.
-
-      Algorithm-Specific Fields for RSA signatures:
-
-      *  Multiprecision integer (MPI) of RSA signature value m**d mod n.
 
       Algorithm-Specific Fields for DSA and ECDSA signatures:
 
