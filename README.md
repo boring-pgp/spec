@@ -147,6 +147,8 @@ plaintext of an encrypted and/or signed message.
 
 Format:
 
+* `0xcb` (packet tag)
+* 4-byte plaintext length plus 6
 * `0x62` (binary)
 * `0x00` (empty filename)
 * `0x00 0x00 0x00 0x00` (no creation time)
@@ -163,38 +165,43 @@ the signer to output the signed message in one pass.
 
 Format:
 
-   * 0x03 (version)
-   * 0x00 (binary document)
-   * 0x08 (SHA2-256)
-   * 0x16 (EdDSA)
-   * Key ID of signing key (8 bytes)
-   * 0x00 (not nested)
+* `0xc4` (packet tag)
+* `0x00 0x00 0x00 0x0d` (packet length)
+* `0x03` (version)
+* `0x00` (binary document)
+* `0x08` (SHA2-256)
+* `0x16` (EdDSA)
+* Key ID of signing key (8 bytes)
+* `0x00` (not nested)
 
 ### 4.3. Signature Packets
 
 #### 4.3.1. File Signatures
 
-   Format:
+Format:
 
-   Hashed part:
+* `0xc2` (packet tag)
+* `0x00 0x00 0x00 0x78` (packet length)
 
-   * 0x04 (version)
-   * 0x00 (binary document)
-   * 0x16 (EdDSA)
-   * 0x08 (SHA2-256)
-   * 0x00 0x28 (length of hashed subpacket data)
-   * 0x21 0x21 followed by 32-byte fingerprint (issuer fingerprint version 5)
-   * 0x05 0x02 followed by 4-byte signature creation time
+Hashed part:
+   
+* `0x04` (version)
+* `0x00` (binary document)
+* `0x16` (EdDSA)
+* `0x08` (SHA2-256)
+* `0x00 0x28` (length of hashed subpacket data)
+* `0x21 0x21` followed by 32-byte fingerprint (issuer fingerprint version 5)
+* `0x05 0x02` followed by 4-byte signature creation time
 
-   Unhashed part:
+Unhashed part:
 
-   * 0x00 0x00 (length of unhashed subpacket data)
-   * 0x00 0x00 (quick check bytes, could also be random)
+* `0x00 0x00` (length of unhashed subpacket data)
+* `0x00 0x00` (quick check bytes, could also be random)
 
-   For EdDSA:
+For EdDSA signature:
 
-   * MPI of EdDSA compressed value r
-   * MPI of EdDSA compressed value s
+* `0x01 0x17 0x40` followed by 32-byte point r
+* `0x01 0x17 0x40` followed by 32-byte point s
 
    The compressed version of R and S for use with EdDSA is described in
    [I-D.irtf-cfrg-eddsa].
